@@ -4,17 +4,20 @@ import os
 import logging
 from urllib.parse import urlparse
 from urllib.request import urlretrieve
-
+from queue import Queue
+from threading import Thread
 import PIL
 from PIL import Image
 
-logging.basicConfig(filename='logfile.log', level=logging.DEBUG)
+FORMAT = "[%(threadName)s, %(asctime)s, %(levelname)s] %(message)s"
+logging.basicConfig(filename='logfile.log', level=logging.DEBUG, format=FORMAT)
 
 class ThumbnailMakerService(object):
     def __init__(self, home_dir='.'):
         self.home_dir = home_dir
         self.input_dir = self.home_dir + os.path.sep + 'incoming'
         self.output_dir = self.home_dir + os.path.sep + 'outgoing'
+        self.img_queue = Queue()
 
     def download_images(self, img_url_list):
         # validate inputs
@@ -29,14 +32,14 @@ class ThumbnailMakerService(object):
             # download each image and save to the input dir 
             img_filename = urlparse(url).path.split('/')[-1]
             urlretrieve(url, self.input_dir + os.path.sep + img_filename)
+            self.img_queue.put(img_filename)
         end = time.perf_counter()
 
+        self.img_queue.put(None)
         logging.info("downloaded {} images in {} seconds".format(len(img_url_list), end - start))
 
     def perform_resizing(self):
         # validate inputs
-        if not os.listdir(self.input_dir):
-            return
         os.makedirs(self.output_dir, exist_ok=True)
 
         logging.info("beginning image resizing")
@@ -44,7 +47,12 @@ class ThumbnailMakerService(object):
         num_images = len(os.listdir(self.input_dir))
 
         start = time.perf_counter()
-        for filename in os.listdir(self.input_dir):
+        while True:
+            filename = self.img_queue.get()
+            if not filename:
+                self.img_queue.task_done()
+                return
+            logging.info(f"resizing image {filename}")
             orig_img = Image.open(self.input_dir + os.path.sep + filename)
             for basewidth in target_sizes:
                 img = orig_img
@@ -60,6 +68,9 @@ class ThumbnailMakerService(object):
                 img.save(self.output_dir + os.path.sep + new_filename)
 
             os.remove(self.input_dir + os.path.sep + filename)
+            logging.info(f"completed resizing image {filename}")
+            self.img_queue.task_done()
+
         end = time.perf_counter()
 
         logging.info("created {} thumbnails in {} seconds".format(num_images, end - start))
@@ -68,6 +79,13 @@ class ThumbnailMakerService(object):
         logging.info("START make_thumbnails")
         start = time.perf_counter()
 
+        t1 = Thread(target=self.download_images, args=([img_url_list]))
+        t2 = Thread(target=self.perform_resizing)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+        
         self.download_images(img_url_list)
         self.perform_resizing()
 

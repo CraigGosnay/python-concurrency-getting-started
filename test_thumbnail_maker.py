@@ -1,4 +1,5 @@
 from thumbnail_maker import ThumbnailMakerService
+from basic_asyncio import AsyncTesting
 
 IMG_URLS = \
     ['https://dl.dropboxusercontent.com/s/2fu69d8lfesbhru/pexels-photo-48603.jpeg',
@@ -32,3 +33,7 @@ IMG_URLS = \
 def test_thumbnail_maker():
     tn_maker = ThumbnailMakerService()
     tn_maker.make_thumbnails(IMG_URLS)
+
+# def test_asyncio_basic():
+#     s = AsyncTesting()
+#     s.run()

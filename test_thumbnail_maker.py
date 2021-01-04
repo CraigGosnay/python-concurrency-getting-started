@@ -36,4 +36,8 @@ def test_thumbnail_maker():
 
 # def test_asyncio_basic():
 #     s = AsyncTesting()
-#     s.run()
+#     s.run_basic()
+
+# def test_async_with_multiproc():
+#     s = AsyncTesting()
+#     s.run_combine_async_multiproc()

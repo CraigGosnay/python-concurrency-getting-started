@@ -73,6 +73,7 @@ class ThumbnailMakerService(object):
                     '_' + str(basewidth) + os.path.splitext(filename)[1]
                 out_filepath = self.output_dir + os.path.sep + new_filename
                 img.save(out_filepath)
+                # this provides a multiPROCESS lock (not thread)
                 with self.resized_size.get_lock():
                     self.resized_size.value += os.path.getsize(out_filepath)
 

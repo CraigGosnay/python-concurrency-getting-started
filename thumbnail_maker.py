@@ -5,7 +5,7 @@ import logging
 from urllib.parse import urlparse
 from urllib.request import urlretrieve
 from queue import Queue
-from threading import Thread
+from threading import Thread, Lock
 import PIL
 from PIL import Image
 import multiprocessing
@@ -23,16 +23,21 @@ class ThumbnailMakerService(object):
         self.input_dir = self.home_dir + os.path.sep + 'incoming'
         self.output_dir = self.home_dir + os.path.sep + 'outgoing'
         self.img_queue = multiprocessing.JoinableQueue()
+        self.dl_size = 0  # total size of our downloads
+        self.resized_size = multiprocessing.Value('i', 0)  # scaled down total
 
     # io bound
-    def download_image(self, dl_queue):
+    def download_image(self, dl_queue, dl_size_lock):
         while not dl_queue.empty():
             logging.info("attempting download")
             try:
                 url = dl_queue.get(block=False)
                 # download each image and save to the input dir
                 img_filename = urlparse(url).path.split('/')[-1]
-                urlretrieve(url, self.input_dir + os.path.sep + img_filename)
+                img_filepath = self.input_dir + os.path.sep + img_filename
+                urlretrieve(url, img_filepath)
+                with dl_size_lock:
+                    self.dl_size += os.path.getsize(img_filepath)
                 self.img_queue.put(img_filename)
                 dl_queue.task_done()
             except:
@@ -66,7 +71,10 @@ class ThumbnailMakerService(object):
                 # save the resized image to the output dir with a modified file name
                 new_filename = os.path.splitext(filename)[0] + \
                     '_' + str(basewidth) + os.path.splitext(filename)[1]
-                img.save(self.output_dir + os.path.sep + new_filename)
+                out_filepath = self.output_dir + os.path.sep + new_filename
+                img.save(out_filepath)
+                with self.resized_size.get_lock():
+                    self.resized_size.value += os.path.getsize(out_filepath)
 
             os.remove(self.input_dir + os.path.sep + filename)
             logging.info(f"completed resizing image {filename}")
@@ -82,13 +90,15 @@ class ThumbnailMakerService(object):
         start = time.perf_counter()
 
         dl_queue = Queue()  # must be local as must be picklable for mprocessing
+        dl_size_lock = Lock()
 
         for img in img_url_list:
             dl_queue.put(img)
 
         # io bound via multithreading
         for _ in range(4):
-            t = Thread(target=self.download_image,  args=(dl_queue,))
+            t = Thread(target=self.download_image,
+                       args=(dl_queue, dl_size_lock))
             t.start()
 
         # cpu bound via multiprocessing
@@ -102,4 +112,8 @@ class ThumbnailMakerService(object):
             self.img_queue.put(None)  # poison pill
 
         end = time.perf_counter()
-        logging.info("END make_thumbnails in {} seconds".format(end - start))
+        logging.info(f"END make_thumbnails in {end - start} seconds")
+        logging.info(
+            f"initial downloads size is {self.dl_size}, " \
+                 "rescaled size is {self.resized_size.value}, " \
+                     "space saved is {self.dl_size - self.resized_size.value}")

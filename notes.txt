@@ -1,0 +1,13 @@
+async turns a function into a 'coroutine' function 
+await tells python to pause coroutine execution at that point - returning control to event loop until the await x has triggered its callback/event
+
+A coroutine function returns a coroutine object
+To execute the coroutine object, wrap it in a future, and pass it to an event loop -- mostly the loop will wrap coroutine for us.
+
+asyncio Future:
+    - result / exception methods are NON-blocking (use await)
+
+concurrent Future:
+    - result / exception methods are blocking w/ timeout
+
+
